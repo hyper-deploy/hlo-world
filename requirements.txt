@@ -1,2 +1,5 @@
-Flask
+flask
+python-telegram-bot
+instagrapi
+requests
 gunicorn
