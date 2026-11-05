@@ -1,5 +1,3 @@
-flask
-python-telegram-bot
-instagrapi
-requests
-uvicorn
+Flask
+pyTelegramBotAPI
+gunicorn
