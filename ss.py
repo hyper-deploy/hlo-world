@@ -12,7 +12,7 @@ from instagrapi import Client
 # ১. এখানে আপনার তথ্যগুলো বসান
 BOT_TOKEN = '9213115853:AAExh_cX7Ve--ze-V7artxpgYmUYewG-lXs'
 ADMIN_CHAT_ID = '5428249457' 
-WEB_APP_URL = 'https://hlo-world.onrender.com/' # আপনার রেন্ডার লিংক
+WEB_APP_URL = 'https://hlo-world.onrender.com' # আপনার রেন্ডার লিংক
 # ==========================================
 
 # ==========================================
